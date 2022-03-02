@@ -1,62 +1,58 @@
+//declare map variable globally so all functions have access
 var map;
 var minValue;
 
-//function to instantiate the Leaflet map
+//step 1 create map
 function createMap(){
+
     //create the map
     map = L.map('mapid', {
-        center: [20, 0],
+        center: [0, 0],
         zoom: 2
     });
-    var Stamen_Toner = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner/{z}/{x}/{y}{r}.{ext}', {
-        attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        subdomains: 'abcd',
-        minZoom: 0,
-        maxZoom: 20,
-        ext: 'png'
-    }).addTo(map);
-    //call data function
-    getData()
 
+    //add OSM base tilelayer
+    L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+    }).addTo(map);
+
+    //call getData function
+    getData();
 };
 
 function calculateMinValue(data){
     //create empty array to store all data values
     var allValues = [];
-    //loop through each country
-    for(var country of data.features){
+    //loop through each city
+    for(var city of data.features){
         //loop through each year
-        for(var year = 1980; year <= 2015; year+=5){
+        for(var year = 1985; year <= 2015; year+=5){
               //get population for current year
-              var value = country.properties["Power_"+ String(year)];
-              
+              var value = city.properties["Pop_"+ String(year)];
               //add value to array
               allValues.push(value);
         }
     }
     //get minimum value of our array
     var minValue = Math.min(...allValues)
-    
-    return minValue;
-    
-}
 
+    return minValue;
+}
 
 //calculate the radius of each proportional symbol
 function calcPropRadius(attValue) {
     //constant factor adjusts symbol sizes evenly
-    var minRadius = 1;
+    var minRadius = 5;
     //Flannery Apperance Compensation formula
-    //min value is zero, so I added the minimum non-zero value 0.326
-    var radius = 1.0083 * Math.pow(attValue/(minValue+0.326),0.5715) * minRadius
-    
+    var radius = 1.0083 * Math.pow(attValue/minValue,0.5715) * minRadius
+
     return radius;
 };
 
 //function to convert markers to circle markers
-function pointToLayer(feature, latlng){
+function pointToLayer(feature, latlng, attributes){
     //Determine which attribute to visualize with proportional symbols
-    var attribute = "Power_1980";
+    var attribute = "Pop_2015";
 
     //create marker options
     var options = {
@@ -66,6 +62,12 @@ function pointToLayer(feature, latlng){
         opacity: 1,
         fillOpacity: 0.8
     };
+
+    //Step 4: Assign the current attribute based on the first index of the attributes array
+    var attribute = attributes[0];
+    //check
+    console.log(attribute);
+
 
     //For each feature, determine its value for the selected attribute
     var attValue = Number(feature.properties[attribute]);
@@ -77,14 +79,16 @@ function pointToLayer(feature, latlng){
     var layer = L.circleMarker(latlng, options);
 
     //build popup content string starting with city...Example 2.1 line 24
-    var popupContent = "<p><b>Country:</b> " + feature.properties.Feature + "</p>";
+    var popupContent = "<p><b>City:</b> " + feature.properties.City + "</p>";
 
     //add formatted attribute to popup content string
     var year = attribute.split("_")[1];
-    popupContent += "<p><b>Nuclear Power in " + year + ":</b> " + feature.properties[attribute] + " billion kWh</p>";
+
+    popupContent += "<p><b>Population in " + year + ":</b> " + feature.properties[attribute] + " million</p>";
     
 
     //bind the popup to the circle marker
+    //layer.bindPopup(popupContent);
     layer.bindPopup(popupContent, {
         offset: new L.Point(0,-options.radius) 
     });
@@ -96,7 +100,6 @@ function pointToLayer(feature, latlng){
 
 
 
-//Add circle markers for point features to the map
 function createPropSymbols(data, attributes){
     //create a Leaflet GeoJSON layer and add it to the map
     L.geoJson(data, {
@@ -118,11 +121,11 @@ function updatePropSymbols(attribute){
             layer.setRadius(radius);
 
             //add city to popup content string
-            var popupContent = "<p><b>Country:</b> " + props.Feature + "</p>";
+            var popupContent = "<p><b>City:</b> " + props.City + "</p>";
 
             //add formatted attribute to panel content string
             var year = attribute.split("_")[1];
-            popupContent += "<p><b>Nuclear Power in " + year + ":</b> " + props[attribute] + " billion kWh</p>";
+            popupContent += "<p><b>Population in " + year + ":</b> " + props[attribute] + " million</p>";
 
             //update popup content            
             popup = layer.getPopup();            
@@ -131,6 +134,7 @@ function updatePropSymbols(attribute){
     });
 };
 
+
 //Step 1: Create new sequence controls
 function createSequenceControls(attributes){
     //create range input element (slider)
@@ -138,7 +142,7 @@ function createSequenceControls(attributes){
     document.querySelector("#panel").insertAdjacentHTML('beforeend',slider);
 
     //set slider attributes
-    document.querySelector(".range-slider").max = 7;
+    document.querySelector(".range-slider").max = 6;
     document.querySelector(".range-slider").min = 0;
     document.querySelector(".range-slider").value = 0;
     document.querySelector(".range-slider").step = 1;
@@ -160,11 +164,11 @@ function createSequenceControls(attributes){
             if (step.id == 'forward'){
                 index++;
                 //Step 7: if past the last attribute, wrap around to first attribute
-                index = index > 7 ? 0 : index;
+                index = index > 6 ? 0 : index;
             } else if (step.id == 'reverse'){
                 index--;
                 //Step 7: if past the first attribute, wrap around to last attribute
-                index = index < 0 ? 7 : index;
+                index = index < 0 ? 6 : index;
             };
             //Step 8: update slider
             document.querySelector('.range-slider').value = index;
@@ -180,6 +184,7 @@ function createSequenceControls(attributes){
 
         updatePropSymbols(attributes[index]);
     });
+
 };
 
 function processData(data){
@@ -192,32 +197,33 @@ function processData(data){
     //push each attribute name into attributes array
     for (var attribute in properties){
         //only take attributes with population values
-        if (attribute.indexOf("Power") > -1){
+        if (attribute.indexOf("Pop") > -1){
             attributes.push(attribute);
         };
     };
+
     //check result
     console.log(attributes);
+
     return attributes;
 };
+
 
 //Step 2: Import GeoJSON data
 function getData(){
     //load the data
-    fetch("data/NuclearPower.geojson")
+    fetch("data/MegaCities.geojson")
         .then(function(response){
             return response.json();
         })
         .then(function(json){
             //create an attributes array
            var attributes = processData(json);
-
-            //calculate minimum data value
-            minValue = calculateMinValue(json);
-            //call function to create proportional symbols
-            createPropSymbols(json,attributes);
-            createSequenceControls(attributes);
-        })
+           minValue = calculateMinValue(json);
+           createPropSymbols(json, attributes);
+           createSequenceControls(attributes);
+       })
 };
+
 
 document.addEventListener('DOMContentLoaded',createMap)
