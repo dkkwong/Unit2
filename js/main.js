@@ -1,5 +1,5 @@
 var map;
-var minValue;
+var dataStats = {}; 
 
 //function to instantiate the Leaflet map
 function createMap(){
@@ -20,37 +20,51 @@ function createMap(){
 
 };
 
-function calculateMinValue(data){
+function calcStats(data){
     //create empty array to store all data values
     var allValues = [];
     //loop through each country
     for(var country of data.features){
         //loop through each year
         for(var year = 1980; year <= 2015; year+=5){
-              //get population for current year
+              //get output for current year
               var value = country.properties["Power_"+ String(year)];
-              
               //add value to array
               allValues.push(value);
         }
     }
-    //get minimum value of our array
-    var minValue = Math.min(...allValues)
-    
-    return minValue;
-    
-}
+    //get min, max, mean stats for our array
+    //min value is zero, so I added the minimum non-zero value 0.326
+    dataStats.min = Math.min(...allValues)+0.326;
+    dataStats.max = Math.max(...allValues);
 
+    //calculate meanValue
+    var sum = allValues.reduce(function(a, b){return a+b;});
+    dataStats.mean = sum/ allValues.length;
+
+    
+} 
+//0.5715
 
 //calculate the radius of each proportional symbol
 function calcPropRadius(attValue) {
     //constant factor adjusts symbol sizes evenly
-    var minRadius = 1;
-    //Flannery Apperance Compensation formula
-    //min value is zero, so I added the minimum non-zero value 0.326
-    var radius = 1.0083 * Math.pow(attValue/(minValue+0.326),0.5715) * minRadius
+    var minRadius = 3;
+    //min value is zero, so I use  0.326 for dataStats.min
+    var radius = 1.0083 * Math.pow(attValue/(dataStats.min),0.3) * minRadius
     
     return radius;
+};
+
+function createPopupContent(properties, attribute){
+    //build popup content string 
+    var popupContent = "<p><b>Country:</b> " + properties.Feature + "</p>";
+
+    //add formatted attribute to popup content string
+    var year = attribute.split("_")[1];
+    popupContent += "<p><b>Nuclear Power in " + year + ":</b> " + properties[attribute] + " billion kWh</p>";
+
+    return popupContent;
 };
 
 //function to convert markers to circle markers
@@ -60,11 +74,11 @@ function pointToLayer(feature, latlng){
 
     //create marker options
     var options = {
-        fillColor: "#ff7800",
+        fillColor: "#ffff00",
         color: "#000",
-        weight: 1,
+        weight: .7,
         opacity: 1,
-        fillOpacity: 0.8
+        fillOpacity: 0.7    
     };
 
     //For each feature, determine its value for the selected attribute
@@ -76,13 +90,7 @@ function pointToLayer(feature, latlng){
     //create circle marker layer
     var layer = L.circleMarker(latlng, options);
 
-    //build popup content string starting with city...Example 2.1 line 24
-    var popupContent = "<p><b>Country:</b> " + feature.properties.Feature + "</p>";
-
-    //add formatted attribute to popup content string
-    var year = attribute.split("_")[1];
-    popupContent += "<p><b>Nuclear Power in " + year + ":</b> " + feature.properties[attribute] + " billion kWh</p>";
-    
+    var popupContent = createPopupContent(feature.properties, attribute);
 
     //bind the popup to the circle marker
     layer.bindPopup(popupContent, {
@@ -108,8 +116,13 @@ function createPropSymbols(data, attributes){
 
 //Step 10: Resize proportional symbols according to new attribute values
 function updatePropSymbols(attribute){
+
+    var year = attribute.split("_")[1];
+    //update temporal legend
+    document.querySelector("span.year").innerHTML = year;
+
     map.eachLayer(function(layer){
-        if (layer.feature && layer.feature.properties[attribute]){
+        if (layer.feature){
             //access feature properties
             var props = layer.feature.properties;
 
@@ -117,12 +130,7 @@ function updatePropSymbols(attribute){
             var radius = calcPropRadius(props[attribute]);
             layer.setRadius(radius);
 
-            //add city to popup content string
-            var popupContent = "<p><b>Country:</b> " + props.Feature + "</p>";
-
-            //add formatted attribute to panel content string
-            var year = attribute.split("_")[1];
-            popupContent += "<p><b>Nuclear Power in " + year + ":</b> " + props[attribute] + " billion kWh</p>";
+            var popupContent = createPopupContent(props, attribute); 
 
             //update popup content            
             popup = layer.getPopup();            
@@ -131,31 +139,46 @@ function updatePropSymbols(attribute){
     });
 };
 
-//Step 1: Create new sequence controls
-function createSequenceControls(attributes){
-    //create range input element (slider)
-    var slider = "<input class='range-slider' type='range'></input>";
-    document.querySelector("#panel").insertAdjacentHTML('beforeend',slider);
 
-    //set slider attributes
+function createSequenceControls(attributes){
+    var SequenceControl = L.Control.extend({
+        options: {
+            position: 'bottomright'
+        },
+
+        onAdd: function () {
+            // create the control container div with a particular class name
+            var container = L.DomUtil.create('div', 'sequence-control-container');
+
+            //create range input element (slider)
+            container.insertAdjacentHTML('beforeend', '<input class="range-slider" type="range">')
+
+            //add skip buttons
+            container.insertAdjacentHTML('beforeend', '<button class="step" id="reverse" title="Reverse">Reverse</button>'); 
+            container.insertAdjacentHTML('beforeend', '<button class="step" id="forward" title="Forward">Forward</button>');
+
+             //disable any mouse event listeners for the container
+             L.DomEvent.disableClickPropagation(container);
+
+            return container;
+        }
+    });
+    
+    //add listeners 
+    map.addControl(new SequenceControl());
+
+    //set slider attributes, 8 columns of data
     document.querySelector(".range-slider").max = 7;
     document.querySelector(".range-slider").min = 0;
     document.querySelector(".range-slider").value = 0;
     document.querySelector(".range-slider").step = 1;
 
-    //downloaded images
-    //document.querySelector('#panel').insertAdjacentHTML('beforeend',"<img src='img/forward.png'>");
-    //document.querySelector('#panel').insertAdjacentHTML('beforeend',"<img src='img/backwards.png'>");
-
-    document.querySelector('#panel').insertAdjacentHTML('beforeend','<button class="step" id="reverse">Reverse</button>');
-    document.querySelector('#panel').insertAdjacentHTML('beforeend','<button class="step" id="forward">Forward</button>');
 
     //Step 5: click listener for buttons
     document.querySelectorAll('.step').forEach(function(step){
         step.addEventListener("click", function(){
             var index = document.querySelector('.range-slider').value;
-            console.log(index)
-
+            
             //Step 6: increment or decrement depending on button clicked
             if (step.id == 'forward'){
                 index++;
@@ -176,10 +199,61 @@ function createSequenceControls(attributes){
     document.querySelector('.range-slider').addEventListener('input', function(){
         //Step 6: get the new index value
         var index = this.value;
-        console.log(index)
+        
 
         updatePropSymbols(attributes[index]);
     });
+};
+
+function createLegend(attributes){
+    var LegendControl = L.Control.extend({
+        options: {
+            position: 'bottomright'
+        },
+
+        onAdd: function () {
+            // create the control container with a particular class name
+            var container = L.DomUtil.create('div', 'legend-control-container');
+
+            //create temporal legend
+            container.innerHTML = '<b class="temporalLegend">Nuclear Power <span class="year">1980 </span></b>';
+            
+            //create svg element
+            var svg = '<svg id="attribute-legend" width="210px" height="90px">';
+
+            //array of circle names to base loop on  
+            var circles = ["max", "mean", "min"]; 
+
+            //Step 2: loop to add each circle and text to svg string  
+            for (var i=0; i<circles.length; i++){  
+
+                //Step 3: assign the r and cy attributes  
+                var radius = calcPropRadius(dataStats[circles[i]]);  
+                var cy = 80 - radius;  
+
+                
+                //dynamically assign circle values based on calculated proportional symbols, assign same color and fill 
+                svg += '<circle class="legend-circle" id="' + circles[i] + '" r="' + radius + '"cy="' + cy + '" fill="#ffff00" fill-opacity="0.7" stroke="#000000" cx="50"/>';  
+                
+                var textY = i * 20 +35;            
+
+                //text string            
+                svg += '<text id="' + circles[i] + '-text" x="90" y="' + textY + '">' + Math.round(dataStats[circles[i]]*100)/100 + " billion kWh" + '</text>';
+              
+            
+            };  
+
+            //close svg string
+            svg += "</svg>";
+
+            //add attribute legend svg to container
+            container.insertAdjacentHTML('beforeend',svg);
+
+            return container;
+        }
+    });
+
+    map.addControl(new LegendControl());
 };
 
 function processData(data){
@@ -210,14 +284,24 @@ function getData(){
         })
         .then(function(json){
             //create an attributes array
-           var attributes = processData(json);
-
-            //calculate minimum data value
-            minValue = calculateMinValue(json);
+            var attributes = processData(json);
+            calcStats(json);
             //call function to create proportional symbols
             createPropSymbols(json,attributes);
             createSequenceControls(attributes);
+            createLegend(attributes);
+            
         })
 };
+
+//create a new div element call description
+var description = document.querySelector('#description')
+
+
+
+var iframe = '<iframe src="https://data.worldbank.org/share/widget?end=2015&indicators=EG.ELC.NUCL.ZS&start=1980&view=chart" width="450" height="300" frameBorder="0" scrolling="no" ></iframe>'
+//add infographic to page
+
+description.insertAdjacentHTML('beforeend',iframe)
 
 document.addEventListener('DOMContentLoaded',createMap)
